@@ -11,6 +11,7 @@ provider:
           - "firehose:*"
           - "lambda:*"
           - "dynamodb:*"
+          - "secretsmanager:*"
         Resource: "*"
     
 
@@ -20,9 +21,11 @@ custom:
   stage: "${opt:stage, self:provider.stage}"
   env:
     prod:
-      secret: arn:aws:secretsmanager:us-east-1:717203727172:secret:github-credentials-i3EZRW
+      secret: "github/token"
+      firehose: "github-api"
     dev:
-      secret: arn:aws:secretsmanager:us-east-1:717203727172:secret:github-credentials-ISFMDF
+      secret: "github/token"
+      firehose: "github-api"
 
 
 
@@ -30,7 +33,8 @@ functions:
   extract-github-data:
     handler: handler.github_extract    
     environment:
-      secret: ${self:custom.env.${self:custom.stage}.secret}
+      SECRET: ${self:custom.env.${self:custom.stage}.secret}
+      FIREHOSE: ${self:custom.env.${self:custom.stage}.firehose}
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
 #    Check the event documentation for details

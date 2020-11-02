@@ -1,9 +1,26 @@
 import json
 import os
-from urllib import request
+import boto3
 import requests
 import itertools
 
+
+
+def get_secret():
+
+    secret_name = os.getenv("SECRET")
+    
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager'
+        , region_name="us-east-1"
+    )
+
+    return client.get_secret_value(
+            SecretId=secret_name
+    )['SecretString']
+    
 def api_req(user):
     url = 'https://api.github.com/graphql'
     query = ("""query {
@@ -53,31 +70,37 @@ def api_req(user):
 
     """ % (user))
 
-    
-
-    r = requests.post(url, json={'query': query}, headers={"Authorization": "token %s" % os.getenv("GITHUB_TOKEN")})
+    GITHUB_TOKEN = json.loads(get_secret())["GITHUB_TOKEN"]
+    r = requests.post(url, json={'query': query}, headers={"Authorization": "token %s" % GITHUB_TOKEN})
     return json.loads(r.text)["data"]
 
 def github_extract(event, context):
-   
-  user = "gabrielmartinigit"#os.getenv("GITHUB_USERNAME")
   
+  user = "gabrielmartinigit"#os.getenv("GITHUB_USERNAME")
+
   print("user: %s" % (user) )
-  repos_contributtion = api_req(user)["user"]["repositoriesContributedTo"]["totalCount"]
+  
+  user_data = api_req(user)
+  repos_contributtion = user_data["user"]["repositoriesContributedTo"]["totalCount"]
   print("repos_contributtion: %s" % (repos_contributtion))
   
-  pullRequests = api_req(user)["user"]["pullRequests"]["totalCount"]
+  pullRequests = user_data["user"]["pullRequests"]["totalCount"]
   print("pullRequests: %s" % (pullRequests))
   
-  followers = api_req(user)["user"]["followers"]["totalCount"]
+  followers = user_data["user"]["followers"]["totalCount"]
   print("followers: %s" % (followers))
   
-  map_repos = map(lambda o: languages(o) , api_req(user)["user"]["repositories"]["nodes"])
+  map_repos = map(lambda o: languages(o) , user_data["user"]["repositories"]["nodes"])
   concat_languages = list(itertools.chain.from_iterable(list(map_repos)))
   distinct_languages = list(set(concat_languages))
   print("languages: ", distinct_languages)
 
-  
+  firehose = boto3.client("firehose", region_name="us-east-1")
+    
+  firehose.put_record(
+                DeliveryStreamName=os.getenv("FIREHOSE"),
+                Record={ "Data":json.dumps(user_data)},
+            )
 def languages(nodes_repo):
     #print(nodes_repo)
     return list(map(lambda u: u["name"] , nodes_repo["languages"]["nodes"]))
